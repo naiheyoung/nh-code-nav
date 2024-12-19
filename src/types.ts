@@ -11,3 +11,5 @@ interface CodeNavConfig {
 type LinkType = `https://${string}` | `http://${string}`
 
 type WriteType = 'd' | 'info' | 'warn'
+
+type MoveEvent = 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'

@@ -10,6 +10,7 @@ import { WebglAddon } from '@xterm/addon-webgl'
 let t: Terminal
 const inputRegex = /^[^\r\n]*$/
 const moveRegex = /\x1b\[(A|B|C|D)/
+const CursorMoveEvent = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
 const unit = '$'
 const prefix = 'codenav  ~\r\ncopy functionality is currently not supported.\r\ntype help to get started.'
 const systemCommand = new Map<string, Function>()
@@ -147,13 +148,8 @@ const enableKeyboardListener = () => {
     if (domEvent.key === 'Enter') {
       enterEvent()
     }
-    if (domEvent.key === 'ArrowUp' || domEvent.key === 'ArrowDown') {
-    }
-    if (domEvent.key === 'ArrowLeft') {
-      domEvent.preventDefault()
-    }
-    if (domEvent.key === 'ArrowRight') {
-      domEvent.preventDefault()
+    if (CursorMoveEvent.concat(domEvent.key)) {
+      return
     }
   })
 }

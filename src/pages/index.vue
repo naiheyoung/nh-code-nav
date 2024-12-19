@@ -1,5 +1,5 @@
 <template>
-  <div text-gray-500>
+  <div text-gray-500 text-center>
     <div flex justify-center>
       <!-- w7.5 -->
       <svg
