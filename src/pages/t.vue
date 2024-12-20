@@ -1,6 +1,5 @@
 <template>
-  <div class="t wfull hfull" ref="t">
-  </div>
+  <div class="t wfull hfull" ref="t"></div>
 </template>
 
 <script setup lang="ts">

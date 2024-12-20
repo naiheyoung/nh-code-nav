@@ -10,12 +10,25 @@ import { WebglAddon } from '@xterm/addon-webgl'
 let t: Terminal
 const inputRegex = /^[^\r\n]*$/
 const moveRegex = /\x1b\[(A|B|C|D)/
+const imageRegex = /^https?:\/\/.*\.(jpg|jpeg|png|gif|bmp|webp)$/i
+const ignoreInputRegex = /^(||\[24~|\[23~|\[21~|\[20~|\[19~|\[18~|\[17~|\[15~|OS|OQ|OP|\[H|\[F)$/
 const CursorMoveEvent = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
 const unit = '$'
-const prefix = 'codenav  ~\r\ncopy functionality is currently not supported.\r\ntype help to get started.'
+const markType = new Map<MarkType, number>()
+markType.set('INFO', 36)
+markType.set('ERROR', 31)
+markType.set('OK', 32)
+markType.set('WARN', 33)
+markType.set('NONE', 30)
+const markWrapper = (text: string, type: MarkType = 'INFO') => {
+  return `\x1B[1;3;${markType.get(type) || markType.get('INFO')}m${text.trimEnd()}\x1B[0m`
+}
+const prefix = `codenav  ~\r\n${markWrapper('copy functionality is currently not supported.', 'NONE')}\r\n${markWrapper('some key actions are not processed, so it is not surprising that the default actions appear.', 'NONE')}\r\ntype ${markWrapper('help')} to get started.`
 const systemCommand = new Map<string, Function>()
 // only valid commands will be saved
 const historyCommand = new Set<string>()
+const historyCommandArray: string[] = []
+let historyCommandIndex = -1
 
 const helpCommand = () => {
   systemWrite('📑  docs:')
@@ -46,6 +59,17 @@ systemCommand.set('history', () => {
     systemWrite(c)
   })
 })
+const imageCommand = (imgUrl: string) => {
+  if (imageRegex.test(imgUrl)) {
+    const imageSequence = `\x1b]1337;File=inline=1:${imgUrl}\x1b\\`
+    systemWrite(imageSequence)
+    return
+  }
+  systemWrite('Invalid Image Link.')
+}
+systemCommand.set('image', imageCommand)
+systemCommand.set('img', imageCommand)
+systemCommand.set('pic', imageCommand)
 
 let currentInput = ''
 const tConfig: ITerminalOptions & ITerminalInitOnlyOptions = {
@@ -71,12 +95,13 @@ const prompt = (hasUnit: boolean = true) => {
 
 // bad command
 const badCommand = () => {
-  systemWrite('the command is incorrect, you can use help to view commands.')
+  systemWrite(`the command is incorrect, you can use ${markWrapper('help')} or ${markWrapper('h')} to view commands.`)
   prompt()
 }
 
-// to paste
+// todo: to paste
 const paste = (text: string) => {
+  const _text = text.trimEnd()
 
 }
 
@@ -99,6 +124,16 @@ const openLink = (url: LinkType) => {
   }
 }
 
+// get user input
+const getUserInput = () => {
+  return t.buffer.active.getLine(t.buffer.active.cursorY)?.getCell(t.buffer.active.cursorX)?.getChars().trimEnd()
+}
+
+// todo: Pinyin placeholder processing
+const pinyinInputHandler = () => {
+
+}
+
 // enter event or commands event
 const enterEvent = () => {
   console.log(currentInput)
@@ -106,9 +141,14 @@ const enterEvent = () => {
   const _input = currentInput.toLowerCase().trimEnd().split(/\s+/)
   const _command = systemCommand.get(_input[0])
   if (_command) {
-    historyCommand.add(_input[0])
+    if (!historyCommand.has(_input[0])) {
+      historyCommand.add(_input[0])
+      historyCommandArray.push(_input[0])
+    }
     _command(_input[1])
     prompt()
+    // if it's -1 here, then you need to modify the relevant logic in `historyInput`
+    historyCommandIndex = historyCommand.size
   } else {
     badCommand()
   }
@@ -125,15 +165,43 @@ const backspaceEvent = () => {
 
 // output
 const systemWrite = (content: string, unit: boolean = true, type: WriteType = 'd') => {
-  prompt(false)
+  unit ? prompt(false) : prompt(true)
   const c = content.trimEnd()
   t.write(c)
+}
+
+// ctrl + r
+const reloadEvent = () => {
+  if ('location' in window) {
+    window.location.reload()
+  }
+}
+
+const historyInput = (mark: number) => {
+  if (historyCommand.size <= 0) return
+  if (mark < 0) {
+    historyCommandIndex = (historyCommandIndex + 1) > historyCommandArray.length - 1 ? 0 : historyCommandIndex + 1
+  } else {
+    historyCommandIndex = (historyCommandIndex - 1) < 0 ? historyCommandArray.length - 1 : historyCommandIndex - 1
+  }
+  const _currentCommand = historyCommandArray[historyCommandIndex]
+  currentInput.trimEnd().length > 0 ? t.write('\b \b'.repeat(currentInput.trimEnd().length) + _currentCommand) : t.write(_currentCommand)
+  // todo: to be optimized
+  currentInput = ''
+  currentInput += _currentCommand
 }
 
 // listening for user input
 const enableInputListener = () => {
   t.onData((input) => {
-    if (input === '' || moveRegex.test(input) || !inputRegex.test(input)) return
+    if (ignoreInputRegex.test(input) || moveRegex.test(input) || !inputRegex.test(input)) return
+    if (input === '') {
+      navigator.clipboard.readText().then(text => {
+        t.write(text)
+        currentInput += text
+      })
+      return
+    }
     currentInput += input
     t.write(input)
   })
@@ -147,6 +215,20 @@ const enableKeyboardListener = () => {
     }
     if (domEvent.key === 'Enter') {
       enterEvent()
+    }
+    if (domEvent.key === 'r' && domEvent.ctrlKey) {
+      reloadEvent()
+    }
+    if (domEvent.key === 'F11') {
+      t.write('pressed F11')
+      helpCommand()
+      prompt()
+    }
+    if (domEvent.key === 'ArrowUp') {
+      historyInput(0)
+    }
+    if (domEvent.key === 'ArrowDown') {
+      historyInput(-1)
     }
     if (CursorMoveEvent.concat(domEvent.key)) {
       return
@@ -166,6 +248,14 @@ const disableContextMenu = () => {
   useEventListener('contextmenu', (evt) => {
     evt.preventDefault()
   })
+}
+
+const resizeHandler = useDebounceFn(() => {
+  t.resize(Math.floor(window.innerWidth / 10), Math.floor(window.innerHeight / 20))
+}, 100)
+// resize
+const enableResizeListener = () => {
+  useEventListener('resize', resizeHandler)
 }
 
 const fitAddon = new FitAddon()
@@ -190,6 +280,7 @@ export const useTerminal = () => {
     enableKeyboardListener()
     cursorMoveListener()
     // disableContextMenu()
+    enableResizeListener()
   }
 
   return { initT }
