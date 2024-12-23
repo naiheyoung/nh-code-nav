@@ -59,13 +59,34 @@ systemCommand.set('history', () => {
     systemWrite(c)
   })
 })
-const imageCommand = (imgUrl: string) => {
-  if (imageRegex.test(imgUrl)) {
-    const imageSequence = `\x1b]1337;File=inline=1:${imgUrl}\x1b\\`
-    systemWrite(imageSequence)
+
+const iip = (data: Uint8Array) => {
+  let bstr = ''
+  for (let i = 0; i < data.length; ++i) bstr += String.fromCharCode(data[i])
+  return `\x1b]1337;File=inline=1;size=${bstr.length};width=300px:${btoa(bstr)}\x1b\\`
+}
+
+const imageCommand = async (imgUrl: string) => {
+  if (!imageRegex.test(imgUrl)) {
+    systemWrite('Invalid Image Link.')
     return
   }
-  systemWrite('Invalid Image Link.')
+  try {
+    const res = await fetch('https://cors-anywhere.herokuapp.com/' + imgUrl.replace(/^https?:\/\//, ''))
+    if (res.status === 200) {
+      const _type = res.headers.get('Content-Type')
+      if (_type?.startsWith('image/')) {
+        const buffer = await res.arrayBuffer()
+        systemWrite(iip(new Uint8Array(buffer)))
+      } else {
+        systemWrite(markWrapper('the response is not of image type.', 'NONE'))
+      }
+    } else {
+      systemWrite(markWrapper(res.statusText, 'NONE'))
+    }
+  } catch (err) {
+    systemWrite('Failed to load image.')
+  }
 }
 systemCommand.set('image', imageCommand)
 systemCommand.set('img', imageCommand)
@@ -85,7 +106,9 @@ const tConfig: ITerminalOptions & ITerminalInitOnlyOptions = {
   cursorWidth: 3,
   cursorInactiveStyle: 'bar',
   disableStdin: false,
-  fontFamily: 'JetBrains Mono'
+  fontFamily: 'JetBrains Mono',
+  // todo
+  convertEol: true
 }
 
 const prompt = (hasUnit: boolean = true) => {
@@ -96,7 +119,6 @@ const prompt = (hasUnit: boolean = true) => {
 // bad command
 const badCommand = () => {
   systemWrite(`the command is incorrect, you can use ${markWrapper('help')} or ${markWrapper('h')} to view commands.`)
-  prompt()
 }
 
 // todo: to paste
@@ -135,7 +157,7 @@ const pinyinInputHandler = () => {
 }
 
 // enter event or commands event
-const enterEvent = () => {
+const enterEvent = async () => {
   console.log(currentInput)
   if (!currentInput.trimEnd()) return
   const _input = currentInput.toLowerCase().trimEnd().split(/\s+/)
@@ -145,13 +167,13 @@ const enterEvent = () => {
       historyCommand.add(_input[0])
       historyCommandArray.push(_input[0])
     }
-    _command(_input[1])
-    prompt()
+    await _command(_input[1])
     // if it's -1 here, then you need to modify the relevant logic in `historyInput`
     historyCommandIndex = historyCommand.size
   } else {
     badCommand()
   }
+  prompt()
   currentInput = ''
 }
 
