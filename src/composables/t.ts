@@ -24,6 +24,7 @@ const markWrapper = (text: string, type: MarkType = 'INFO') => {
   return `\x1B[1;3;${markType.get(type) || markType.get('INFO')}m${text.trimEnd()}\x1B[0m`
 }
 const prefix = `codenav  ~\r\n${markWrapper('copy functionality is currently not supported.', 'NONE')}\r\n${markWrapper('some key actions are not processed, so it is not surprising that the default actions appear.', 'NONE')}\r\ntype ${markWrapper('help')} to get started.`
+const beforeFetch = 'https://cors-anywhere.herokuapp.com/'
 const systemCommand = new Map<string, Function>()
 // only valid commands will be saved
 const historyCommand = new Set<string>()
@@ -72,7 +73,7 @@ const imageCommand = async (imgUrl: string) => {
     return
   }
   try {
-    const res = await fetch('https://cors-anywhere.herokuapp.com/' + imgUrl.replace(/^https?:\/\//, ''))
+    const res = await fetch(beforeFetch + imgUrl.replace(/^https?:\/\//, ''))
     if (res.status === 200) {
       const _type = res.headers.get('Content-Type')
       if (_type?.startsWith('image/')) {
