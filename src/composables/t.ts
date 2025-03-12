@@ -6,6 +6,7 @@ import { SearchAddon } from '@xterm/addon-search'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
+import { CommandMap } from './other'
 
 let t: Terminal
 const inputRegex = /^[^\r\n]*$/
@@ -23,9 +24,15 @@ markType.set('NONE', 30)
 const markWrapper = (text: string, type: MarkType = 'INFO') => {
   return `\x1B[1;3;${markType.get(type) || markType.get('INFO')}m${text.trimEnd()}\x1B[0m`
 }
-const prefix = `codenav  ~\r\n${markWrapper('copy functionality is currently not supported.', 'NONE')}\r\n${markWrapper('some key actions are not processed, so it is not surprising that the default actions appear.', 'NONE')}\r\ntype ${markWrapper('help')} to get started.`
+const prefix = `codenav  ~\r\n${markWrapper(
+  'copy functionality is currently not supported.',
+  'NONE'
+)}\r\n${markWrapper(
+  'some key actions are not processed, so it is not surprising that the default actions appear.',
+  'NONE'
+)}\r\ntype ${markWrapper('help')} to get started.`
 const beforeFetch = 'https://cors-anywhere.herokuapp.com/'
-const systemCommand = new Map<string, Function>()
+const systemCommand = new CommandMap()
 // only valid commands will be saved
 const historyCommand = new Set<string>()
 const historyCommandArray: string[] = []
@@ -33,33 +40,62 @@ let historyCommandIndex = -1
 
 const helpCommand = () => {
   systemWrite('📑  docs:')
-  systemCommand.keys().toArray().sort().forEach(c => {
-    systemWrite(`   ${c.padEnd(10)} \t print docs`)
-  })
+  let _c: string[] = []
+  const newCommands = systemCommand.keys().toArray().sort()
+  newCommands.reduce((prev, current, i) => {
+    const ofDesc = systemCommand.get(current)!.desc
+    if (ofDesc === prev) {
+      _c.push(current)
+    } else {
+      systemWrite(`   ${_c.join('/').padEnd(20)} \t ${prev}`)
+      _c.length = 0
+      _c.push(current)
+      if (i + 1 === newCommands.length && ofDesc !== prev) {
+        systemWrite(`   ${current.padEnd(20)} \t ${ofDesc}`)
+      }
+    }
+    return ofDesc
+  }, systemCommand.get(newCommands[0])!.desc)
 }
-systemCommand.set('help', helpCommand)
-systemCommand.set('h', helpCommand)
-systemCommand.set('source', () => {
-  systemWrite('https://github.com/naiheyoung/nh-code-nav')
-})
-systemCommand.set('to', (url: LinkType) => {
-  if (!url) {
-    systemWrite('tips: to <url>')
-    return
-  }
-  openLink(url)
-})
+systemCommand.setCommand('help', helpCommand, 'show command document.')
+systemCommand.setCommand('h', helpCommand, 'help')
+systemCommand.setCommand(
+  'source',
+  () => {
+    systemWrite('https://github.com/naiheyoung/nh-code-nav')
+  },
+  'display the github repository url of the project.'
+)
+systemCommand.setCommand(
+  'to',
+  (url: LinkType) => {
+    if (!url) {
+      systemWrite('tips: to <url>')
+      return
+    }
+    if (!url.includes('.')) {
+      systemWrite('Please enter a valid URL.')
+      return
+    }
+    openLink(url)
+  },
+  'open target link in new tab.'
+)
 const clear = () => {
   t.clear()
 }
-systemCommand.set('cls', clear)
-systemCommand.set('clear', clear)
-systemCommand.set('c', clear)
-systemCommand.set('history', () => {
-  historyCommand.forEach((c) => {
-    systemWrite(c)
-  })
-})
+systemCommand.setCommand('cls', clear, 'clear console.')
+systemCommand.setCommand('clear', clear, 'cls')
+systemCommand.setCommand('c', clear, 'cls')
+systemCommand.setCommand(
+  'history',
+  () => {
+    historyCommand.forEach(c => {
+      systemWrite(c)
+    })
+  },
+  'list history commands.'
+)
 
 const iip = (data: Uint8Array) => {
   let bstr = ''
@@ -89,9 +125,9 @@ const imageCommand = async (imgUrl: string) => {
     systemWrite('Failed to load image.')
   }
 }
-systemCommand.set('image', imageCommand)
-systemCommand.set('img', imageCommand)
-systemCommand.set('pic', imageCommand)
+systemCommand.setCommand('image', imageCommand, 'preview image.')
+systemCommand.setCommand('img', imageCommand, 'image')
+systemCommand.setCommand('pic', imageCommand, 'image')
 
 let currentInput = ''
 const tConfig: ITerminalOptions & ITerminalInitOnlyOptions = {
@@ -119,23 +155,29 @@ const prompt = (hasUnit: boolean = true) => {
 
 // bad command
 const badCommand = () => {
-  systemWrite(`the command is incorrect, you can use ${markWrapper('help')} or ${markWrapper('h')} to view commands.`)
+  systemWrite(
+    `the command is incorrect, you can use ${markWrapper('help')} or ${markWrapper(
+      'h'
+    )} to view commands.`
+  )
 }
 
 // todo: to paste
 const paste = (text: string) => {
   const _text = text.trimEnd()
-
 }
 
 // to copy
-const copy = () => {
-
-}
+const copy = () => {}
 
 // open link
 const openLink = (url: LinkType) => {
-  prompt()
+  // todo: new URL()
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = 'https://' + url
+  }
+  // prompt()
+  systemWrite('Done.')
   if ('open' in window) {
     window.open(url, '_blank')
   } else {
@@ -149,13 +191,15 @@ const openLink = (url: LinkType) => {
 
 // get user input
 const getUserInput = () => {
-  return t.buffer.active.getLine(t.buffer.active.cursorY)?.getCell(t.buffer.active.cursorX)?.getChars().trimEnd()
+  return t.buffer.active
+    .getLine(t.buffer.active.cursorY)
+    ?.getCell(t.buffer.active.cursorX)
+    ?.getChars()
+    .trimEnd()
 }
 
 // todo: Pinyin placeholder processing
-const pinyinInputHandler = () => {
-
-}
+const pinyinInputHandler = () => {}
 
 // enter event or commands event
 const enterEvent = async () => {
@@ -168,7 +212,7 @@ const enterEvent = async () => {
       historyCommand.add(_input[0])
       historyCommandArray.push(_input[0])
     }
-    await _command(_input[1])
+    await _command.exec(_input[1])
     // if it's -1 here, then you need to modify the relevant logic in `historyInput`
     historyCommandIndex = historyCommand.size
   } else {
@@ -203,12 +247,16 @@ const reloadEvent = () => {
 const historyInput = (mark: number) => {
   if (historyCommand.size <= 0) return
   if (mark < 0) {
-    historyCommandIndex = (historyCommandIndex + 1) > historyCommandArray.length - 1 ? 0 : historyCommandIndex + 1
+    historyCommandIndex =
+      historyCommandIndex + 1 > historyCommandArray.length - 1 ? 0 : historyCommandIndex + 1
   } else {
-    historyCommandIndex = (historyCommandIndex - 1) < 0 ? historyCommandArray.length - 1 : historyCommandIndex - 1
+    historyCommandIndex =
+      historyCommandIndex - 1 < 0 ? historyCommandArray.length - 1 : historyCommandIndex - 1
   }
   const _currentCommand = historyCommandArray[historyCommandIndex]
-  currentInput.trimEnd().length > 0 ? t.write('\b \b'.repeat(currentInput.trimEnd().length) + _currentCommand) : t.write(_currentCommand)
+  currentInput.trimEnd().length > 0
+    ? t.write('\b \b'.repeat(currentInput.trimEnd().length) + _currentCommand)
+    : t.write(_currentCommand)
   // todo: to be optimized
   currentInput = ''
   currentInput += _currentCommand
@@ -216,8 +264,9 @@ const historyInput = (mark: number) => {
 
 // listening for user input
 const enableInputListener = () => {
-  t.onData((input) => {
-    if (ignoreInputRegex.test(input) || moveRegex.test(input) || !inputRegex.test(input)) return
+  t.onData(input => {
+    if (ignoreInputRegex.test(input) || moveRegex.test(input) || !inputRegex.test(input))
+      return
     if (input === '') {
       navigator.clipboard.readText().then(text => {
         t.write(text)
@@ -268,7 +317,7 @@ const cursorMoveListener = () => {
 
 // disable menu
 const disableContextMenu = () => {
-  useEventListener('contextmenu', (evt) => {
+  useEventListener('contextmenu', evt => {
     evt.preventDefault()
   })
 }
